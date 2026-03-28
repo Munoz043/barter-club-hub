@@ -79,7 +79,7 @@ offer_options = [
 
 creator_platforms = ["TikTok", "Instagram", "YouTube", "Other"]
 business_store_types = ["Online Store", "Brick & Mortar", "Both", "Other"]
-connection_options = ["Creators", "Businesses"]
+connection_options = ["Creators", "Businesses", "Both"]
 
 # -----------------------------
 # STYLING
@@ -290,7 +290,34 @@ def get_matches(profile, target_connection, min_score=25):
         if post["owner_name"] == profile["display_name"]:
             continue
 
-        score, reasons = score_match(profile, post, target_connection)
+        if target_connection == "Both":
+            role_match = True
+        else:
+            target_account_type = "Creator" if target_connection == "Creators" else "Business"
+            role_match = post["account_type"] == target_account_type
+
+        score = 0
+        reasons = []
+
+        if role_match:
+            score += 25
+            if target_connection == "Both":
+                reasons.append(f"They are a {post['account_type'].lower()}, and you’re open to both account types.")
+            else:
+                reasons.append(f"They are a {post['account_type'].lower()}, which matches your selected lane.")
+
+        if post["offer"] == profile["primary_want"]:
+            score += 35
+            reasons.append(f"They offer {post['offer']}, which matches what you want.")
+
+        if post["want"] == profile["primary_offer"]:
+            score += 35
+            reasons.append(f"They want {post['want']}, which matches what you offer.")
+
+        if post["offer"] == profile["primary_want"] and post["want"] == profile["primary_offer"]:
+            score += 5
+            reasons.append("This is a strong two-way barter fit.")
+
         if score >= min_score:
             enriched = post.copy()
             enriched["match_score"] = score
