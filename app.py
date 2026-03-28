@@ -18,7 +18,7 @@ defaults = {
     "selected_target": "Creators",
     "auth_page": "login",
     "signup_role": "Creator",
-    "forced_page": None,
+    "page": "Dashboard",
     "barter_posts": [
         {
             "owner_name": "EloiseKNYC",
@@ -248,11 +248,13 @@ def get_current_profile():
 def login_user(username, account_type):
     st.session_state.current_user = username
     st.session_state.current_account_type = account_type
+    st.session_state.page = "Dashboard"
 
 def logout_user():
     st.session_state.current_user = None
     st.session_state.current_account_type = None
     st.session_state.auth_page = "login"
+    st.session_state.page = "Dashboard"
 
 def get_user_connections(current_name):
     return [
@@ -264,10 +266,19 @@ def score_match(profile, post, target_connection):
     score = 0
     reasons = []
 
-    target_account_type = "Creator" if target_connection == "Creators" else "Business"
-    if post["account_type"] == target_account_type:
+    if target_connection == "Both":
+        role_match = True
         score += 25
-        reasons.append(f"They are a {target_account_type.lower()}, which matches your selected lane.")
+        reasons.append(f"They are a {post['account_type'].lower()}, and you’re open to both account types.")
+    else:
+        target_account_type = "Creator" if target_connection == "Creators" else "Business"
+        role_match = post["account_type"] == target_account_type
+        if role_match:
+            score += 25
+            reasons.append(f"They are a {post['account_type'].lower()}, which matches your selected lane.")
+
+    if not role_match:
+        return 0, []
 
     if post["offer"] == profile["primary_want"]:
         score += 35
@@ -290,33 +301,7 @@ def get_matches(profile, target_connection, min_score=25):
         if post["owner_name"] == profile["display_name"]:
             continue
 
-        if target_connection == "Both":
-            role_match = True
-        else:
-            target_account_type = "Creator" if target_connection == "Creators" else "Business"
-            role_match = post["account_type"] == target_account_type
-
-        score = 0
-        reasons = []
-
-        if role_match:
-            score += 25
-            if target_connection == "Both":
-                reasons.append(f"They are a {post['account_type'].lower()}, and you’re open to both account types.")
-            else:
-                reasons.append(f"They are a {post['account_type'].lower()}, which matches your selected lane.")
-
-        if post["offer"] == profile["primary_want"]:
-            score += 35
-            reasons.append(f"They offer {post['offer']}, which matches what you want.")
-
-        if post["want"] == profile["primary_offer"]:
-            score += 35
-            reasons.append(f"They want {post['want']}, which matches what you offer.")
-
-        if post["offer"] == profile["primary_want"] and post["want"] == profile["primary_offer"]:
-            score += 5
-            reasons.append("This is a strong two-way barter fit.")
+        score, reasons = score_match(profile, post, target_connection)
 
         if score >= min_score:
             enriched = post.copy()
@@ -505,7 +490,8 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["Dashboard", "Profile", "New Offer", "Matches", "Connections", "Settings"]
+        ["Dashboard", "Profile", "New Offer", "Matches", "Connections", "Settings"],
+        key="page"
     )
 
 # -----------------------------
@@ -554,14 +540,21 @@ if page == "Dashboard":
         </div>
         """, unsafe_allow_html=True)
 
-        choice_left, choice_right = st.columns(2)
-        with choice_left:
+        choice_a, choice_b, choice_c = st.columns(3)
+        with choice_a:
             if st.button("Connect with Creators", use_container_width=True):
                 st.session_state.selected_target = "Creators"
+                st.session_state.page = "Matches"
                 st.rerun()
-        with choice_right:
+        with choice_b:
             if st.button("Connect with Businesses", use_container_width=True):
                 st.session_state.selected_target = "Businesses"
+                st.session_state.page = "Matches"
+                st.rerun()
+        with choice_c:
+            if st.button("Connect with Both", use_container_width=True):
+                st.session_state.selected_target = "Both"
+                st.session_state.page = "Matches"
                 st.rerun()
 
         st.markdown(f"""
@@ -597,7 +590,7 @@ if page == "Dashboard":
                 """, unsafe_allow_html=True)
 
         if st.button("Open Full Matches", use_container_width=True):
-            st.session_state.forced_page = "Matches"
+            st.session_state.page = "Matches"
             st.rerun()
 
 # -----------------------------
@@ -660,7 +653,7 @@ elif page == "New Offer":
         st.session_state.barter_posts.append({
             "owner_name": profile["display_name"],
             "account_type": profile["account_type"],
-            "target_type": target_connection[:-1] if target_connection.endswith("s") else target_connection,
+            "target_type": target_connection,
             "offer": offer,
             "want": want,
             "location": profile["location"],
@@ -682,6 +675,7 @@ elif page == "Matches":
             connection_options,
             index=connection_options.index(st.session_state.selected_target)
         )
+        st.session_state.selected_target = target_connection
 
     with filter_col2:
         min_score = st.slider("Minimum match score", 25, 100, 25, 5)
@@ -740,12 +734,3 @@ elif page == "Connections":
 elif page == "Settings":
     st.subheader("Settings")
     st.info("Real account settings will live here later.")
-
-# -----------------------------
-# FORCED PAGE NAV
-# -----------------------------
-if st.session_state.forced_page:
-    forced = st.session_state.forced_page
-    st.session_state.forced_page = None
-    if forced != page:
-        st.rerun()
